@@ -3,22 +3,11 @@ package sign
 import (
 	"fmt"
 
-	"github.com/cronokirby/saferith"
 	"github.com/taurusgroup/multi-party-sig/internal/round"
 	"github.com/taurusgroup/multi-party-sig/pkg/math/curve"
 	"github.com/taurusgroup/multi-party-sig/pkg/party"
 	"github.com/taurusgroup/multi-party-sig/pkg/taproot"
 )
-
-// cofactorScalar returns the cofactor as a scalar for curves that need clearing.
-// It returns nil if no cofactor clearing is required.
-func cofactorScalarSignRound3(g curve.Curve) curve.Scalar {
-	if _, ok := g.(curve.Edwards); ok {
-		cof := new(saferith.Nat).SetUint64(8)
-		return g.NewScalar().SetNat(cof)
-	}
-	return nil
-}
 
 // This corresponds with step 7 of Figure 3 in the Frost paper:
 //
@@ -82,7 +71,7 @@ func (r *round3) StoreBroadcastMessage(msg round.Message) error {
 	actual := body.Z_i.ActOnBase()
 
 	// Clear cofactor for curves that require it
-	if s := cofactorScalarSignRound3(r.Group()); s != nil {
+	if s := curve.CofactorScalar(r.Group()); s != nil {
 		actual = s.Act(actual)
 		expected = s.Act(expected)
 	}

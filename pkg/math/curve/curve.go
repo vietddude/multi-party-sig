@@ -173,3 +173,13 @@ func FromHash(group Curve, h []byte) Scalar {
 	}
 	return group.NewScalar().SetNat(s)
 }
+
+// cofactorScalar returns the cofactor as a scalar for curves that need clearing.
+// It returns nil if no cofactor clearing is required.
+func CofactorScalar(g Curve) Scalar {
+	if _, ok := g.(Edwards); ok {
+		cof := new(saferith.Nat).SetUint64(8)
+		return g.NewScalar().SetNat(cof)
+	}
+	return nil
+}

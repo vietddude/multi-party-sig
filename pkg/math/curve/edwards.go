@@ -1,7 +1,6 @@
 package curve
 
 import (
-	"crypto/sha512"
 	"errors"
 	"fmt"
 	"math/big"
@@ -224,8 +223,7 @@ func (*EdwardsPoint) Curve() Curve {
 }
 
 func (p *EdwardsPoint) XBytes() []byte {
-	serialized := p.value.Serialize()
-	return serialized[:]
+	return []byte{}
 }
 
 func (p *EdwardsPoint) MarshalBinary() ([]byte, error) {
@@ -266,7 +264,11 @@ func (p *EdwardsPoint) Set(that Point) Point {
 	other := edwardsCastPoint(that)
 
 	bytes := other.value.Serialize()
-	pub, _ := edwards.ParsePubKey(bytes)
+	pub, err := edwards.ParsePubKey(bytes)
+	if err != nil {
+		// This should not happen with a valid point.
+		panic(fmt.Sprintf("failed to set EdwardsPoint: %v", err))
+	}
 	p.value = pub
 	return p
 }
@@ -313,13 +315,9 @@ func (p *EdwardsPoint) HasEvenY() bool {
 }
 
 func (p *EdwardsPoint) XScalar() Scalar {
-	// Hash the point to create a scalar
-	encoded := p.value.Serialize()
-	hash := sha512.Sum512(encoded)
-
-	var keyBytes [32]byte
-	copy(keyBytes[:], hash[:32])
-	n := new(saferith.Nat).SetBytes(keyBytes[:])
-	n = n.Mod(n, edwardsOrder)
-	return &EdwardsScalar{n: n}
+	// The X coordinate of an Edwards point is an element of the field F_p, but
+	// a scalar is an element of F_l. These fields are different for Ed25519.
+	// Returning the X coordinate as a scalar is not well-defined here.
+	// Per the interface documentation, we return nil.
+	return nil
 }
