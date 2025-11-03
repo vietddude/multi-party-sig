@@ -3,6 +3,7 @@ package keygen
 import (
 	"fmt"
 
+	"github.com/cronokirby/saferith"
 	"github.com/taurusgroup/multi-party-sig/internal/round"
 	"github.com/taurusgroup/multi-party-sig/internal/types"
 	"github.com/taurusgroup/multi-party-sig/pkg/hash"
@@ -11,8 +12,19 @@ import (
 	"github.com/taurusgroup/multi-party-sig/pkg/party"
 )
 
+// cofactorScalar returns the cofactor as a scalar for curves that need clearing.
+// It returns nil if no cofactor clearing is required.
+func cofactorScalar(g curve.Curve) curve.Scalar {
+	if _, ok := g.(curve.Edwards); ok {
+		cof := new(saferith.Nat).SetUint64(8)
+		return g.NewScalar().SetNat(cof)
+	}
+	return nil
+}
+
 // This round corresponds with steps 2-4 of Round 2, Figure 1 in the Frost paper:
-//   https://eprint.iacr.org/2020/852.pdf
+//
+//	https://eprint.iacr.org/2020/852.pdf
 type round3 struct {
 	*round2
 
@@ -86,7 +98,18 @@ func (r *round3) StoreMessage(msg round.Message) error {
 	// aborting if the check fails."
 	expected := body.F_li.ActOnBase()
 	actual := r.Phi[from].Evaluate(r.SelfID().Scalar(r.Group()))
+	// Clear cofactor for curves that require it
+	if s := cofactorScalar(r.Group()); s != nil {
+		expected = s.Act(expected)
+		actual = s.Act(actual)
+	}
 	if !expected.Equal(actual) {
+		// Debug: print expected vs actual encodings to diagnose curve math mismatch
+		if expBytes, err1 := expected.MarshalBinary(); err1 == nil {
+			if actBytes, err2 := actual.MarshalBinary(); err2 == nil {
+				fmt.Printf("VSS debug self=%s from=%s exp=%x act=%x\n", r.SelfID(), from, expBytes, actBytes)
+			}
+		}
 		return fmt.Errorf("VSS failed to validate")
 	}
 

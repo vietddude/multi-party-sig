@@ -45,20 +45,54 @@ func NewPolynomialExponent(polynomial *Polynomial) *Exponent {
 }
 
 // Evaluate returns F(x) = [secret + a₁•x + … + aₜ•xᵗ]•G.
+// Automatically selects the optimal evaluation depending on curve type.
 func (p *Exponent) Evaluate(x curve.Scalar) curve.Point {
-	result := p.group.NewPoint()
+	switch x.Curve().(type) {
+	case curve.Edwards:
+		// Edwards curve (Ed25519, etc.) needs safe evaluation
+		return p.evaluateSafe(x)
+	default:
+		// Weierstrass (secp256k1, P-256, etc.) can use Horner for speed
+		return p.evaluateFast(x)
+	}
+}
 
-	for i := len(p.coefficients) - 1; i >= 0; i-- {
-		// Bₙ₋₁ = [x]Bₙ  + Aₙ₋₁
-		result = x.Act(result).Add(p.coefficients[i])
+// evaluateSafe computes F(x) = [a0 + a1*x + ... + at*x^t]*G
+// Safe for Edwards curves (avoids nested Act()).
+func (p *Exponent) evaluateSafe(x curve.Scalar) curve.Point {
+	if len(p.coefficients) == 0 {
+		return p.group.NewPoint()
+	}
+
+	// Precompute powers of x: x^0, x^1, ..., x^(n-1)
+	xPowers := make([]curve.Scalar, len(p.coefficients))
+	xPowers[0] = p.group.NewScalar().SetNat(new(saferith.Nat).SetUint64(1))
+	for i := 1; i < len(xPowers); i++ {
+		xPowers[i] = p.group.NewScalar().Set(xPowers[i-1]) // clone
+		xPowers[i].Mul(x)
+	}
+
+	result := p.group.NewPoint()
+	for i := 0; i < len(p.coefficients); i++ {
+		result = result.Add(xPowers[i].Act(p.coefficients[i]))
 	}
 
 	if p.IsConstant {
-		// result is B₁
-		// we want B₀ = [x]B₁ + A₀ = [x]B₁
 		result = x.Act(result)
 	}
+	return result
+}
 
+// evaluateFast uses Horner’s method for Weierstrass curves.
+// Faster but unsafe for Edwards.
+func (p *Exponent) evaluateFast(x curve.Scalar) curve.Point {
+	result := p.group.NewPoint()
+	for i := len(p.coefficients) - 1; i >= 0; i-- {
+		result = x.Act(result).Add(p.coefficients[i])
+	}
+	if p.IsConstant {
+		result = x.Act(result)
+	}
 	return result
 }
 

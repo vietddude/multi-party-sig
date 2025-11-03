@@ -3,14 +3,26 @@ package sign
 import (
 	"fmt"
 
+	"github.com/cronokirby/saferith"
 	"github.com/taurusgroup/multi-party-sig/internal/round"
 	"github.com/taurusgroup/multi-party-sig/pkg/math/curve"
 	"github.com/taurusgroup/multi-party-sig/pkg/party"
 	"github.com/taurusgroup/multi-party-sig/pkg/taproot"
 )
 
+// cofactorScalar returns the cofactor as a scalar for curves that need clearing.
+// It returns nil if no cofactor clearing is required.
+func cofactorScalarSignRound3(g curve.Curve) curve.Scalar {
+	if _, ok := g.(curve.Edwards); ok {
+		cof := new(saferith.Nat).SetUint64(8)
+		return g.NewScalar().SetNat(cof)
+	}
+	return nil
+}
+
 // This corresponds with step 7 of Figure 3 in the Frost paper:
-//   https://eprint.iacr.org/2020/852.pdf
+//
+//	https://eprint.iacr.org/2020/852.pdf
 //
 // The big difference, once again, stems from their being no signing authority.
 // Instead, each participant calculates the signature on their own.
@@ -68,6 +80,12 @@ func (r *round3) StoreBroadcastMessage(msg round.Message) error {
 	expected := r.c.Act(r.Lambda[from].Act(r.YShares[from])).Add(r.RShares[from])
 
 	actual := body.Z_i.ActOnBase()
+
+	// Clear cofactor for curves that require it
+	if s := cofactorScalarSignRound3(r.Group()); s != nil {
+		actual = s.Act(actual)
+		expected = s.Act(expected)
+	}
 
 	if !actual.Equal(expected) {
 		return fmt.Errorf("failed to verify response from %v", from)

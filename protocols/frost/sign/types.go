@@ -3,10 +3,21 @@ package sign
 import (
 	"io"
 
+	"github.com/cronokirby/saferith"
 	"github.com/taurusgroup/multi-party-sig/pkg/hash"
 	"github.com/taurusgroup/multi-party-sig/pkg/math/curve"
 	"github.com/taurusgroup/multi-party-sig/pkg/math/sample"
 )
+
+// cofactorScalar returns the cofactor as a scalar for curves that need clearing.
+// It returns nil if no cofactor clearing is required.
+func cofactorScalarVerify(g curve.Curve) curve.Scalar {
+	if _, ok := g.(curve.Edwards); ok {
+		cof := new(saferith.Nat).SetUint64(8)
+		return g.NewScalar().SetNat(cof)
+	}
+	return nil
+}
 
 // messageHash is a wrapper around bytes to provide some domain separation.
 type messageHash []byte
@@ -29,7 +40,7 @@ func (messageHash) Domain() string {
 //
 // This signature claims to satisfy:
 //
-//    z * G = R + H(R, Y, m) * Y
+//	z * G = R + H(R, Y, m) * Y
 //
 // for a public key Y.
 type Signature struct {
@@ -53,6 +64,11 @@ func (sig Signature) Verify(public curve.Point, m []byte) bool {
 	expected = expected.Add(sig.R)
 
 	actual := sig.z.ActOnBase()
+
+	if s := cofactorScalarVerify(group); s != nil {
+		expected = s.Act(expected)
+		actual = s.Act(actual)
+	}
 
 	return expected.Equal(actual)
 }
