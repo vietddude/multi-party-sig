@@ -184,9 +184,7 @@ func (s *EdwardsScalar) Act(that Point) Point {
 	curve := edwards.Edwards()
 
 	// Perform scalar multiplication using big.Int from nat
-	scalar := new(big.Int).SetBytes(s.n.Bytes())
-	x, y := curve.ScalarMult(other.value.GetX(), other.value.GetY(), scalar.Bytes())
-
+	x, y := curve.ScalarMult(other.value.GetX(), other.value.GetY(), s.n.Bytes())
 	out := &EdwardsPoint{
 		value: edwards.NewPublicKey(x, y),
 	}
@@ -197,8 +195,7 @@ func (s *EdwardsScalar) ActOnBase() Point {
 	curve := edwards.Edwards()
 
 	// Perform scalar base multiplication using big.Int from nat
-	scalar := new(big.Int).SetBytes(s.n.Bytes())
-	x, y := curve.ScalarBaseMult(scalar.Bytes())
+	x, y := curve.ScalarBaseMult(s.n.Bytes())
 
 	out := &EdwardsPoint{
 		value: edwards.NewPublicKey(x, y),
@@ -274,27 +271,13 @@ func (p *EdwardsPoint) Set(that Point) Point {
 }
 
 func (p *EdwardsPoint) Negate() Point {
-	// Negate by flipping the sign bit in the compressed representation
-	serialized := p.value.Serialize()
-
-	// For Edwards curve, negation can be done by flipping the sign bit
-	var negBytes [32]byte
-	copy(negBytes[:], serialized)
-	negBytes[31] ^= 0x80 // Flip the sign bit
-
-	negPub, err := edwards.ParsePubKey(negBytes[:])
-	if err != nil {
-		// If parsing fails, compute negation using curve operations
-		curve := edwards.Edwards()
-		negX := new(big.Int).Neg(p.value.GetX())
-		negX.Mod(negX, curve.Params().P)
-		negPub = edwards.NewPublicKey(negX, p.value.GetY())
-	}
-
-	out := &EdwardsPoint{
-		value: negPub,
-	}
-	return out
+	// Compute -P as (l-1) * P where l is the subgroup order.
+	// This is correct for Edwards25519 and avoids relying on compressed bit hacks.
+	// Build scalar (l - 1) and multiply the point.
+	one := new(saferith.Nat).SetUint64(1)
+	minusOne := new(saferith.Nat).ModSub(edwardsOrder.Nat(), one, edwardsOrder)
+	s := &EdwardsScalar{n: minusOne}
+	return s.Act(p)
 }
 
 func (p *EdwardsPoint) Equal(that Point) bool {
