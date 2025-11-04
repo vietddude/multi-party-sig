@@ -1,6 +1,7 @@
 package sign
 
 import (
+	"crypto/ed25519"
 	"fmt"
 
 	"github.com/taurusgroup/multi-party-sig/internal/round"
@@ -8,6 +9,11 @@ import (
 	"github.com/taurusgroup/multi-party-sig/pkg/party"
 	"github.com/taurusgroup/multi-party-sig/pkg/taproot"
 )
+
+// verifyEd25519Signature verifies an Ed25519 signature using the standard library
+func verifyEd25519Signature(publicKey, message, signature []byte) bool {
+	return ed25519.Verify(publicKey, message, signature)
+}
 
 // This corresponds with step 7 of Figure 3 in the Frost paper:
 //
