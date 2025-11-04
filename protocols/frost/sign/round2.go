@@ -1,6 +1,7 @@
 package sign
 
 import (
+	"crypto/sha512"
 	"fmt"
 
 	"github.com/cronokirby/saferith"
@@ -12,6 +13,16 @@ import (
 	"github.com/taurusgroup/multi-party-sig/pkg/party"
 	"github.com/taurusgroup/multi-party-sig/pkg/taproot"
 )
+
+// computeEd25519Challenge computes the challenge as per RFC 8032:
+// SHA-512(R.BytesEd25519() || A.BytesEd25519() || M)
+func computeEd25519Challenge(R, A, M []byte) [64]byte {
+	data := make([]byte, 0, len(R)+len(A)+len(M))
+	data = append(data, R...)
+	data = append(data, A...)
+	data = append(data, M...)
+	return sha512.Sum512(data)
+}
 
 // This round roughly corresponds with steps 3-6 of Figure 3 in the Frost paper:
 //
@@ -134,6 +145,18 @@ func (r *round2) Finalize(out chan<- *round.Message) (round.Session, error) {
 		PBytes := r.Y.(*curve.Secp256k1Point).XBytes()
 		cHash := taproot.TaggedHash("BIP0340/challenge", RBytes, PBytes, r.M)
 		c = r.Group().NewScalar().SetNat(new(saferith.Nat).SetBytes(cHash))
+	} else if r.ed25519 {
+		// Ed25519: Compute challenge using SHA-512 as per RFC 8032
+		// c = SHA-512(R.BytesEd25519() || A.BytesEd25519() || M) mod q
+		REd25519 := R.(*curve.Ed25519Point)
+		YEd25519 := r.Y.(*curve.Ed25519Point)
+		cHash := computeEd25519Challenge(REd25519.BytesEd25519(), YEd25519.BytesEd25519(), r.M)
+		// Use SetUniformBytes directly to match frost-ed25519 exactly
+		c = r.Group().NewScalar()
+		cEd25519 := c.(*curve.Ed25519Scalar)
+		if err := cEd25519.SetUniformBytes(cHash[:]); err != nil {
+			return r.AbortRound(fmt.Errorf("failed to set challenge scalar: %w", err)), nil
+		}
 	} else {
 		cHash := hash.New()
 		_ = cHash.WriteAny(R, r.Y, r.M)

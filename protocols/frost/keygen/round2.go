@@ -16,6 +16,7 @@ import (
 //   https://eprint.iacr.org/2020/852.pdf
 type round2 struct {
 	*round1
+	// ed25519 is inherited from round1
 	// f_i is the polynomial this participant uses to share their contribution to
 	// the secret
 	f_i *polynomial.Polynomial

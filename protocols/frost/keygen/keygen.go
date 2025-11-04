@@ -13,6 +13,7 @@ const (
 	// Frost KeyGen with Threshold.
 	protocolID        = "frost/keygen-threshold"
 	protocolIDTaproot = "frost/keygen-threshold-taproot"
+	protocolIDEd25519 = "frost/keygen-threshold-ed25519"
 	// This protocol has 3 concrete rounds.
 	protocolRounds round.Number = 3
 )
@@ -24,7 +25,7 @@ var (
 	_ round.Round = (*round3)(nil)
 )
 
-func StartKeygenCommon(taproot bool, group curve.Curve, participants []party.ID, threshold int, selfID party.ID, privateShare curve.Scalar, publicKey curve.Point, verificationShares map[party.ID]curve.Point) protocol.StartFunc {
+func StartKeygenCommon(taproot bool, ed25519 bool, group curve.Curve, participants []party.ID, threshold int, selfID party.ID, privateShare curve.Scalar, publicKey curve.Point, verificationShares map[party.ID]curve.Point) protocol.StartFunc {
 	return func(sessionID []byte) (round.Session, error) {
 		info := round.Info{
 			FinalRoundNumber: protocolRounds,
@@ -35,6 +36,8 @@ func StartKeygenCommon(taproot bool, group curve.Curve, participants []party.ID,
 		}
 		if taproot {
 			info.ProtocolID = protocolIDTaproot
+		} else if ed25519 {
+			info.ProtocolID = protocolIDEd25519
 		} else {
 			info.ProtocolID = protocolID
 		}
@@ -62,6 +65,7 @@ func StartKeygenCommon(taproot bool, group curve.Curve, participants []party.ID,
 		return &round1{
 			Helper:             helper,
 			taproot:            taproot,
+			ed25519:            ed25519,
 			threshold:          threshold,
 			refresh:            refresh,
 			privateShare:       privateShare,

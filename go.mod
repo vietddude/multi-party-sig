@@ -3,6 +3,7 @@ module github.com/taurusgroup/multi-party-sig
 go 1.20
 
 require (
+	filippo.io/edwards25519 v1.1.0
 	github.com/cronokirby/saferith v0.33.0
 	github.com/decred/dcrd/dcrec/secp256k1/v4 v4.2.0
 	github.com/fxamacker/cbor/v2 v2.4.0

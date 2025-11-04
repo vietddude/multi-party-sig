@@ -166,6 +166,22 @@ func (r *round3) Finalize(chan<- *round.Message) (round.Session, error) {
 		}), nil
 	}
 
+	if r.ed25519 {
+		// Ed25519: Store the point directly (it's already Ristretto-encoded)
+		YEd25519 := r.publicKey.(*curve.Ed25519Point)
+		ed25519VerificationShares := make(map[party.ID]*curve.Ed25519Point)
+		for k, v := range r.verificationShares {
+			ed25519VerificationShares[k] = v.(*curve.Ed25519Point)
+		}
+		return r.ResultRound(&Ed25519Config{
+			ID:                 r.SelfID(),
+			Threshold:          r.threshold,
+			PrivateShare:       r.privateShare.(*curve.Ed25519Scalar),
+			PublicKey:          YEd25519,
+			VerificationShares: ed25519VerificationShares,
+		}), nil
+	}
+
 	return r.ResultRound(&Config{
 		ID:                 r.SelfID(),
 		Threshold:          r.threshold,

@@ -210,3 +210,52 @@ func (r *TaprootConfig) DeriveChild(i uint32) (*TaprootConfig, error) {
 	}
 	return r.Derive(scalar, newChainKey)
 }
+
+// Ed25519Config is like Config, but for Ed25519 keys.
+//
+// The main difference is that public keys are stored as Ed25519 points (Ristretto-encoded internally).
+type Ed25519Config struct {
+	// ID is the identifier for this participant.
+	ID party.ID
+	// Threshold is the number of accepted corruptions while still being able to sign.
+	Threshold int
+	// PrivateShare is the fraction of the secret key owned by this participant.
+	PrivateShare *curve.Ed25519Scalar
+	// PublicKey is the shared public key for this consortium of signers.
+	//
+	// This key can be used to verify signatures produced by the consortium.
+	// Stored as a point (Ristretto) for internal operations.
+	PublicKey *curve.Ed25519Point
+	// ChainKey is the additional randomness we've agreed upon.
+	//
+	// This is only ever useful if you do BIP-32 key derivation, or something similar.
+	ChainKey []byte
+	// VerificationShares is a map between parties and a commitment to their private share.
+	//
+	// This will later be used to verify the integrity of the signing protocol.
+	VerificationShares map[party.ID]*curve.Ed25519Point
+}
+
+// Clone creates a deep clone of this struct, and all the values contained inside
+func (r *Ed25519Config) Clone() *Ed25519Config {
+	publicKeyCopy := r.PublicKey.Set(r.PublicKey).(*curve.Ed25519Point)
+	chainKeyCopy := make([]byte, len(r.ChainKey))
+	copy(chainKeyCopy, r.ChainKey)
+	verificationSharesCopy := make(map[party.ID]*curve.Ed25519Point)
+	for k, v := range r.VerificationShares {
+		verificationSharesCopy[k] = v
+	}
+	return &Ed25519Config{
+		ID:                 r.ID,
+		Threshold:          r.Threshold,
+		PrivateShare:       curve.Ed25519{}.NewScalar().Set(r.PrivateShare).(*curve.Ed25519Scalar),
+		PublicKey:          publicKeyCopy,
+		ChainKey:           chainKeyCopy,
+		VerificationShares: verificationSharesCopy,
+	}
+}
+
+// ToEd25519 converts the Ed25519Config's public key to standard ed25519.PublicKey format.
+func (r *Ed25519Config) ToEd25519() []byte {
+	return r.PublicKey.BytesEd25519()
+}
