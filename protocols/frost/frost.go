@@ -12,6 +12,7 @@ import (
 type (
 	Config        = keygen.Config
 	TaprootConfig = keygen.TaprootConfig
+	Ed25519Config = keygen.Ed25519Config
 	Signature     = sign.Signature
 )
 
@@ -43,9 +44,10 @@ func EmptyConfig(group curve.Curve) *Config {
 // selfID is the identifier for the local party calling this function.
 //
 // This protocol corresponds to Figure 1 of the Frost paper:
-//   https://eprint.iacr.org/2020/852.pdf
+//
+//	https://eprint.iacr.org/2020/852.pdf
 func Keygen(group curve.Curve, selfID party.ID, participants []party.ID, threshold int) protocol.StartFunc {
-	return keygen.StartKeygenCommon(false, group, participants, threshold, selfID, nil, nil, nil)
+	return keygen.StartKeygenCommon(false, false, group, participants, threshold, selfID, nil, nil, nil)
 }
 
 // KeygenTaproot is like Keygen, but will make Taproot / BIP-340 compatible keys.
@@ -54,12 +56,21 @@ func Keygen(group curve.Curve, selfID party.ID, participants []party.ID, thresho
 //
 // See: https://github.com/bitcoin/bips/blob/master/bip-0340.mediawiki#specification
 func KeygenTaproot(selfID party.ID, participants []party.ID, threshold int) protocol.StartFunc {
-	return keygen.StartKeygenCommon(true, curve.Secp256k1{}, participants, threshold, selfID, nil, nil, nil)
+	return keygen.StartKeygenCommon(true, false, curve.Secp256k1{}, participants, threshold, selfID, nil, nil, nil)
+}
+
+// KeygenEd25519 is like Keygen, but will make Ed25519 compatible keys.
+//
+// This will also return Ed25519Result instead of Result, at the end of the protocol.
+//
+// See: https://tools.ietf.org/html/rfc8032
+func KeygenEd25519(selfID party.ID, participants []party.ID, threshold int) protocol.StartFunc {
+	return keygen.StartKeygenCommon(false, true, curve.Ed25519{}, participants, threshold, selfID, nil, nil, nil)
 }
 
 // Refresh
 func Refresh(config *Config, participants []party.ID) protocol.StartFunc {
-	return keygen.StartKeygenCommon(false, config.Curve(), participants, config.Threshold, config.ID, config.PrivateShare, config.PublicKey, config.VerificationShares.Points)
+	return keygen.StartKeygenCommon(false, false, config.Curve(), participants, config.Threshold, config.ID, config.PrivateShare, config.PublicKey, config.VerificationShares.Points)
 }
 
 // RefreshTaproot is like Refresh, but will make Taproot / BIP-340 compatible keys.
@@ -78,7 +89,20 @@ func RefreshTaproot(config *TaprootConfig, participants []party.ID) protocol.Sta
 	for k, v := range config.VerificationShares {
 		verificationShares[k] = v
 	}
-	return keygen.StartKeygenCommon(true, curve.Secp256k1{}, participants, config.Threshold, config.ID, config.PrivateShare, publicKey, verificationShares)
+	return keygen.StartKeygenCommon(true, false, curve.Secp256k1{}, participants, config.Threshold, config.ID, config.PrivateShare, publicKey, verificationShares)
+}
+
+// RefreshEd25519 is like Refresh, but will make Ed25519 compatible keys.
+//
+// This will also return Ed25519Result instead of Result, at the end of the protocol.
+//
+// See: https://tools.ietf.org/html/rfc8032
+func RefreshEd25519(config *Ed25519Config, participants []party.ID) protocol.StartFunc {
+	verificationShares := make(map[party.ID]curve.Point, len(config.VerificationShares))
+	for k, v := range config.VerificationShares {
+		verificationShares[k] = v
+	}
+	return keygen.StartKeygenCommon(false, true, curve.Ed25519{}, participants, config.Threshold, config.ID, config.PrivateShare, config.PublicKey, verificationShares)
 }
 
 // Sign initiates the protocol for producing a threshold signature, with Frost.
@@ -91,8 +115,8 @@ func RefreshTaproot(config *TaprootConfig, participants []party.ID) protocol.Sta
 // messageHash is the hash of the message a signature should be generated for.
 //
 // This protocol merges Figures 2 and 3 from the Frost paper:
-//   https://eprint.iacr.org/2020/852.pdf
 //
+//	https://eprint.iacr.org/2020/852.pdf
 //
 // We merge the pre-processing and signing protocols into a single signing protocol
 // which doesn't require any pre-processing.
@@ -102,7 +126,7 @@ func RefreshTaproot(config *TaprootConfig, participants []party.ID) protocol.Sta
 //
 // Differences stemming from this change are commented throughout the protocol.
 func Sign(config *Config, signers []party.ID, messageHash []byte) protocol.StartFunc {
-	return sign.StartSignCommon(false, config, signers, messageHash)
+	return sign.StartSignCommon(false, false, config, signers, messageHash)
 }
 
 // SignTaproot is like Sign, but will generate a Taproot / BIP-340 compatible signature.
@@ -128,5 +152,25 @@ func SignTaproot(config *TaprootConfig, signers []party.ID, messageHash []byte) 
 		PublicKey:          publicKey,
 		VerificationShares: party.NewPointMap(genericVerificationShares),
 	}
-	return sign.StartSignCommon(true, normalResult, signers, messageHash)
+	return sign.StartSignCommon(true, false, normalResult, signers, messageHash)
+}
+
+// SignEd25519 is like Sign, but will generate an Ed25519 compatible signature.
+//
+// This needs the result of an Ed25519 compatible key generation phase, naturally.
+//
+// See: https://tools.ietf.org/html/rfc8032
+func SignEd25519(config *keygen.Ed25519Config, signers []party.ID, messageHash []byte) protocol.StartFunc {
+	genericVerificationShares := make(map[party.ID]curve.Point)
+	for k, v := range config.VerificationShares {
+		genericVerificationShares[k] = v
+	}
+	normalResult := &keygen.Config{
+		ID:                 config.ID,
+		Threshold:          config.Threshold,
+		PrivateShare:       config.PrivateShare,
+		PublicKey:          config.PublicKey,
+		VerificationShares: party.NewPointMap(genericVerificationShares),
+	}
+	return sign.StartSignCommon(false, true, normalResult, signers, messageHash)
 }

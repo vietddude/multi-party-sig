@@ -11,7 +11,8 @@ import (
 )
 
 // This round sort of corresponds with Figure 2 of the Frost paper:
-//   https://eprint.iacr.org/2020/852.pdf
+//
+//	https://eprint.iacr.org/2020/852.pdf
 //
 // The main difference is that instead of having a separate pre-processing step,
 // we instead have an additional round at the start of the signing step.
@@ -27,6 +28,10 @@ type round1 struct {
 	// and we need to make sure to generate our challenge in the correct way. Naturally,
 	// we also return a taproot.Signature instead a generic signature.
 	taproot bool
+	// ed25519 indicates whether or not we need to generate Ed25519 signatures.
+	//
+	// If so, we use SHA-512 for challenge computation and Ed25519-compatible signature format.
+	ed25519 bool
 	// M is the hash of the message we're signing.
 	//
 	// This plays the same role as m in the Frost paper. One slight difference

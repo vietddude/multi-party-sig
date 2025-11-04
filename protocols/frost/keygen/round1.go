@@ -15,7 +15,8 @@ import (
 )
 
 // This round corresponds with the steps 1-4 of Round 1, Figure 1 in the Frost paper:
-//   https://eprint.iacr.org/2020/852.pdf
+//
+//	https://eprint.iacr.org/2020/852.pdf
 type round1 struct {
 	*round.Helper
 	// taproot indicates whether or not to make taproot compatible keys.
@@ -25,6 +26,10 @@ type round1 struct {
 	//
 	// We also end up returning a different result, to accomodate this fact.
 	taproot bool
+	// ed25519 indicates whether or not to make Ed25519 compatible keys.
+	//
+	// This means using Ristretto encoding and Ed25519-compatible public key format.
+	ed25519 bool
 	// threshold is the integer t which defines the maximum number of corruptions tolerated for this session.
 	//
 	// Alternatively, the degree of the polynomial used to share the secret.

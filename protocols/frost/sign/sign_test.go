@@ -1,6 +1,7 @@
 package sign
 
 import (
+	"crypto/ed25519"
 	"crypto/rand"
 	"crypto/sha256"
 	"testing"
@@ -68,7 +69,7 @@ func TestSign(t *testing.T) {
 		if newPublicKey == nil {
 			newPublicKey = result.PublicKey
 		}
-		r, err := StartSignCommon(false, result, partyIDs, steak)(nil)
+		r, err := StartSignCommon(false, false, result, partyIDs, steak)(nil)
 		require.NoError(t, err, "round creation should not result in an error")
 		rounds = append(rounds, r)
 	}
@@ -151,7 +152,7 @@ func TestSignTaproot(t *testing.T) {
 			PublicKey:          tapRootPublicKey,
 			VerificationShares: party.NewPointMap(genericVerificationShares),
 		}
-		r, err := StartSignCommon(true, normalResult, partyIDs, steak)(nil)
+		r, err := StartSignCommon(true, false, normalResult, partyIDs, steak)(nil)
 		require.NoError(t, err, "round creation should not result in an error")
 		rounds = append(rounds, r)
 	}
@@ -165,4 +166,82 @@ func TestSignTaproot(t *testing.T) {
 	}
 
 	checkOutputTaproot(t, rounds, newPublicKey, steak)
+}
+
+func checkOutputEd25519(t *testing.T, rounds []round.Session, public []byte, m []byte) {
+	for _, r := range rounds {
+		if abort, ok := r.(*round.Abort); ok {
+			t.Fatalf("round aborted: %v", abort.Err)
+		}
+		require.IsType(t, &round.Output{}, r, "expected result round")
+		resultRound := r.(*round.Output)
+		require.IsType(t, []byte(nil), resultRound.Result, "expected ed25519 signature result")
+		signature := resultRound.Result.([]byte)
+		require.Len(t, signature, 64, "ed25519 signature should be 64 bytes")
+		assert.True(t, ed25519.Verify(public, m, signature), "expected valid ed25519 signature")
+	}
+}
+
+func TestSignEd25519(t *testing.T) {
+	group := curve.Ed25519{}
+	N := 5
+	threshold := 2
+
+	partyIDs := test.PartyIDs(N)
+
+	secret := sample.Scalar(rand.Reader, group)
+	f := polynomial.NewPolynomial(group, threshold, secret)
+	publicPoint := secret.ActOnBase()
+	steak := []byte{0xDE, 0xAD, 0xBE, 0xEF}
+	chainKey := make([]byte, params.SecBytes)
+	_, _ = rand.Read(chainKey)
+
+	privateShares := make(map[party.ID]*curve.Ed25519Scalar, N)
+	for _, id := range partyIDs {
+		privateShares[id] = f.Evaluate(id.Scalar(group)).(*curve.Ed25519Scalar)
+	}
+
+	verificationShares := make(map[party.ID]*curve.Ed25519Point, N)
+	for _, id := range partyIDs {
+		verificationShares[id] = privateShares[id].ActOnBase().(*curve.Ed25519Point)
+	}
+
+	var newPublicKey []byte
+	rounds := make([]round.Session, 0, N)
+	for _, id := range partyIDs {
+		result := &keygen.Ed25519Config{
+			ID:                 id,
+			Threshold:          threshold,
+			PublicKey:          publicPoint.(*curve.Ed25519Point),
+			PrivateShare:       privateShares[id],
+			VerificationShares: verificationShares,
+		}
+		if newPublicKey == nil {
+			newPublicKey = result.PublicKey.BytesEd25519()
+		}
+		genericVerificationShares := make(map[party.ID]curve.Point)
+		for k, v := range result.VerificationShares {
+			genericVerificationShares[k] = v
+		}
+		normalResult := &keygen.Config{
+			ID:                 result.ID,
+			Threshold:          result.Threshold,
+			PrivateShare:       result.PrivateShare,
+			PublicKey:          result.PublicKey,
+			VerificationShares: party.NewPointMap(genericVerificationShares),
+		}
+		r, err := StartSignCommon(false, true, normalResult, partyIDs, steak)(nil)
+		require.NoError(t, err, "round creation should not result in an error")
+		rounds = append(rounds, r)
+	}
+
+	for {
+		err, done := test.Rounds(rounds, nil)
+		require.NoError(t, err, "failed to process round")
+		if done {
+			break
+		}
+	}
+
+	checkOutputEd25519(t, rounds, newPublicKey, steak)
 }

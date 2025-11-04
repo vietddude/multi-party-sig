@@ -1,6 +1,7 @@
 package main
 
 import (
+	"crypto/ed25519"
 	"errors"
 	"fmt"
 	"sync"
@@ -178,6 +179,52 @@ func FrostSignTaproot(c *frost.TaprootConfig, id party.ID, m []byte, signers par
 	return nil
 }
 
+func FrostKeygenEd25519(id party.ID, ids party.IDSlice, threshold int, n *test.Network) (*frost.Ed25519Config, error) {
+	h, err := protocol.NewMultiHandler(frost.KeygenEd25519(id, ids, threshold), nil)
+	if err != nil {
+		return nil, err
+	}
+	test.HandlerLoop(id, h, n)
+	r, err := h.Result()
+	if err != nil {
+		return nil, err
+	}
+
+	return r.(*frost.Ed25519Config), nil
+}
+
+func FrostSignEd25519(c *frost.Ed25519Config, id party.ID, m []byte, signers party.IDSlice, n *test.Network) error {
+	h, err := protocol.NewMultiHandler(frost.SignEd25519(c, signers, m), nil)
+	if err != nil {
+		return err
+	}
+	test.HandlerLoop(id, h, n)
+	r, err := h.Result()
+	if err != nil {
+		return err
+	}
+
+	sig := r.([]byte)
+	if len(sig) != 64 || !ed25519.Verify(c.PublicKey.BytesEd25519(), m, sig) {
+		return errors.New("failed to verify frost ed25519 signature")
+	}
+	return nil
+}
+
+func FrostRefreshEd25519(c *frost.Ed25519Config, ids party.IDSlice, n *test.Network) (*frost.Ed25519Config, error) {
+	h, err := protocol.NewMultiHandler(frost.RefreshEd25519(c, ids), nil)
+	if err != nil {
+		return nil, err
+	}
+	test.HandlerLoop(c.ID, h, n)
+	r, err := h.Result()
+	if err != nil {
+		return nil, err
+	}
+
+	return r.(*frost.Ed25519Config), nil
+}
+
 func All(id party.ID, ids party.IDSlice, threshold int, message []byte, n *test.Network, wg *sync.WaitGroup, pl *pool.Pool) error {
 	defer wg.Done()
 
@@ -211,7 +258,7 @@ func All(id party.ID, ids party.IDSlice, threshold int, message []byte, n *test.
 		return err
 	}
 
-	signers := ids[:threshold+1]
+	signers := ids
 	if !signers.Contains(id) {
 		n.Quit(id)
 		return nil
@@ -250,10 +297,52 @@ func All(id party.ID, ids party.IDSlice, threshold int, message []byte, n *test.
 	return nil
 }
 
+func AllEd25519AllSigners(id party.ID, ids party.IDSlice, threshold int, message []byte, n *test.Network, wg *sync.WaitGroup, pl *pool.Pool) error {
+	defer wg.Done()
+
+	// XOR
+	err := XOR(id, ids, n)
+	if err != nil {
+		return err
+	}
+
+	// FROST KEYGEN ED25519
+	frostResultEd25519, err := FrostKeygenEd25519(id, ids, threshold, n)
+	if err != nil {
+		return err
+	}
+
+	signers := ids
+
+	if !signers.Contains(id) {
+		n.Quit(id)
+		return nil
+	}
+
+	// FROST SIGN ED25519
+	err = FrostSignEd25519(frostResultEd25519, id, message, signers, n)
+	if err != nil {
+		return err
+	}
+
+	// FROST REFRESH ED25519
+	frostResultRefreshEd25519, err := FrostRefreshEd25519(frostResultEd25519, ids, n)
+	if err != nil {
+		return err
+	}
+
+	err = FrostSignEd25519(frostResultRefreshEd25519, id, message, signers, n)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
 func main() {
 
-	ids := party.IDSlice{"a", "b", "c", "d", "e", "f"}
-	threshold := 4
+	ids := party.IDSlice{"a", "b", "c"}
+	threshold := 1
 	messageToSign := []byte("hello")
 
 	net := test.NewNetwork(ids)
@@ -264,7 +353,7 @@ func main() {
 		go func(id party.ID) {
 			pl := pool.NewPool(0)
 			defer pl.TearDown()
-			if err := All(id, ids, threshold, messageToSign, net, &wg, pl); err != nil {
+			if err := AllEd25519AllSigners(id, ids, threshold, messageToSign, net, &wg, pl); err != nil {
 				fmt.Println(err)
 			}
 		}(id)

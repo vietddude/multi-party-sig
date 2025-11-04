@@ -76,7 +76,7 @@ func TestKeygen(t *testing.T) {
 
 	rounds := make([]round.Session, 0, N)
 	for _, partyID := range partyIDs {
-		r, err := StartKeygenCommon(false, group, partyIDs, N-1, partyID, nil, nil, nil)(nil)
+		r, err := StartKeygenCommon(false, false, group, partyIDs, N-1, partyID, nil, nil, nil)(nil)
 		require.NoError(t, err, "round creation should not result in an error")
 		rounds = append(rounds, r)
 	}
@@ -148,7 +148,7 @@ func TestKeygenTaproot(t *testing.T) {
 
 	rounds := make([]round.Session, 0, N)
 	for _, partyID := range partyIDs {
-		r, err := StartKeygenCommon(true, group, partyIDs, N-1, partyID, nil, nil, nil)(nil)
+		r, err := StartKeygenCommon(true, false, group, partyIDs, N-1, partyID, nil, nil, nil)(nil)
 		require.NoError(t, err, "round creation should not result in an error")
 		rounds = append(rounds, r)
 
@@ -163,4 +163,74 @@ func TestKeygenTaproot(t *testing.T) {
 	}
 
 	checkOutputTaproot(t, rounds, partyIDs)
+}
+
+func TestKeygenEd25519(t *testing.T) {
+	N := 5
+	partyIDs := test.PartyIDs(N)
+	group := curve.Ed25519{}
+
+	rounds := make([]round.Session, 0, N)
+	for _, partyID := range partyIDs {
+		r, err := StartKeygenCommon(false, true, group, partyIDs, N-1, partyID, nil, nil, nil)(nil)
+		require.NoError(t, err, "round creation should not result in an error")
+		rounds = append(rounds, r)
+
+	}
+
+	for {
+		err, done := test.Rounds(rounds, nil)
+		require.NoError(t, err, "failed to process round")
+		if done {
+			break
+		}
+	}
+
+	checkOutputEd25519(t, rounds, partyIDs)
+}
+
+func checkOutputEd25519(t *testing.T, rounds []round.Session, parties party.IDSlice) {
+	group := curve.Ed25519{}
+
+	N := len(rounds)
+	results := make([]Ed25519Config, 0, N)
+	for _, r := range rounds {
+		require.IsType(t, &round.Output{}, r, "expected result round")
+		resultRound := r.(*round.Output)
+		require.IsType(t, &Ed25519Config{}, resultRound.Result, "expected ed25519 result")
+		result := resultRound.Result.(*Ed25519Config)
+		results = append(results, *result)
+		require.Equal(t, r.SelfID(), result.ID, "party IDs should be the same")
+	}
+
+	var publicKey *curve.Ed25519Point
+	var chainKey []byte
+	privateKey := group.NewScalar()
+	lagrangeCoefficients := polynomial.Lagrange(group, parties)
+	for _, result := range results {
+		if publicKey != nil {
+			assert.True(t, publicKey.Equal(result.PublicKey), "different public keys")
+		}
+		publicKey = result.PublicKey
+		if chainKey != nil {
+			assert.Equal(t, chainKey, result.ChainKey, "different chain keys")
+		}
+		chainKey = result.ChainKey
+		privateKey.Add(group.NewScalar().Set(lagrangeCoefficients[result.ID]).Mul(result.PrivateShare))
+	}
+
+	actualPublicKey := privateKey.ActOnBase()
+	require.True(t, publicKey.Equal(actualPublicKey), "public key should match reconstructed key")
+
+	shares := make(map[party.ID]curve.Scalar)
+	for _, result := range results {
+		shares[result.ID] = result.PrivateShare
+	}
+
+	for _, result := range results {
+		for _, id := range parties {
+			expected := shares[id].ActOnBase()
+			assert.True(t, result.VerificationShares[id].Equal(expected), "verification shares should match")
+		}
+	}
 }
