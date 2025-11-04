@@ -215,7 +215,6 @@ func TestSignEd25519(t *testing.T) {
 			PublicKey:          publicPoint.(*curve.Ed25519Point),
 			PrivateShare:       privateShares[id],
 			VerificationShares: verificationShares,
-			ChainKey:           chainKey,
 		}
 		if newPublicKey == nil {
 			newPublicKey = result.PublicKey.BytesEd25519()

@@ -1,7 +1,6 @@
 package sign
 
 import (
-	"crypto/ed25519"
 	"fmt"
 
 	"github.com/taurusgroup/multi-party-sig/internal/round"
@@ -10,13 +9,9 @@ import (
 	"github.com/taurusgroup/multi-party-sig/pkg/taproot"
 )
 
-// verifyEd25519Signature verifies an Ed25519 signature using the standard library
-func verifyEd25519Signature(publicKey, message, signature []byte) bool {
-	return ed25519.Verify(publicKey, message, signature)
-}
-
 // This corresponds with step 7 of Figure 3 in the Frost paper:
-//   https://eprint.iacr.org/2020/852.pdf
+//
+//	https://eprint.iacr.org/2020/852.pdf
 //
 // The big difference, once again, stems from their being no signing authority.
 // Instead, each participant calculates the signature on their own.
@@ -120,17 +115,17 @@ func (r *round3) Finalize(chan<- *round.Message) (round.Session, error) {
 	} else if r.ed25519 {
 		// Ed25519 signature format: R (32 bytes) || S (32 bytes)
 		REd25519 := r.R.(*curve.Ed25519Point)
-		
+
 		// Verify the FROST signature equation: z*G = R + c*Y
 		// Use the challenge c that was computed in round2 and stored in r.c
 		zG := z.ActOnBase()
 		cY := r.c.Act(r.Y)
 		expected := r.R.Add(cY)
-		
+
 		if !zG.Equal(expected) {
 			return r.AbortRound(fmt.Errorf("FROST signature equation failed: z*G != R + c*Y")), nil
 		}
-		
+
 		// Construct Ed25519-compatible signature: R (32 bytes) || S (32 bytes)
 		// where S = z (the aggregated response scalar)
 		sig := make([]byte, 0, 64)

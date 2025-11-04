@@ -6,9 +6,9 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/cronokirby/saferith"
 	"filippo.io/edwards25519"
 	"filippo.io/edwards25519/field"
+	"github.com/cronokirby/saferith"
 )
 
 // Ed25519 implements the Curve interface for Ed25519 using Ristretto encoding.
@@ -73,10 +73,10 @@ var (
 		0xeb, 0x4e, 0x9b, 0x52, 0x2f, 0xd3, 0xdc, 0x4c,
 		0x41, 0x22, 0x6c, 0xf6, 0x7a, 0xb3, 0x68, 0x59,
 	})
-	zero     = new(field.Element)
-	one      = new(field.Element).One()
-	two      = new(field.Element).Add(one, one)
-	minusOne = new(field.Element).Subtract(zero, one)
+	zero = new(field.Element)
+	one  = new(field.Element).One()
+	two  = new(field.Element).Add(one, one)
+	_    = new(field.Element).Subtract(zero, one)
 )
 
 var ed25519OrderNat, _ = new(saferith.Nat).SetHex("1000000000000000000000000000000014DEF9DEA2F79CD65812631A5CF5D3ED")
